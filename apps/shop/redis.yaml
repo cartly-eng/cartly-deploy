@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels: {app: redis, app.kubernetes.io/part-of: cartly}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis, app.kubernetes.io/part-of: cartly}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: [--maxmemory, 64mb, --maxmemory-policy, allkeys-lru, --save, ""]
+          ports: [{name: redis, containerPort: 6379}]
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels: {app: redis}
+spec:
+  selector: {app: redis}
+  ports: [{name: redis, port: 6379}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+  labels: {app: redis-exporter}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis-exporter}
+  template:
+    metadata:
+      labels: {app: redis-exporter}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9121"}
+    spec:
+      containers:
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.67.0
+          env: [{name: REDIS_ADDR, value: "redis://redis:6379"}]
+          ports: [{containerPort: 9121}]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}

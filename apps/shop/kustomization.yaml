@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shop
+resources:
+  - config.yaml
+  - postgres.yaml
+  - redis.yaml
+  - frontend.yaml
+  - inventory.yaml
+  - checkout.yaml
+  - payments.yaml
+  - payment-gateway.yaml
+  - promotions.yaml
+  - storefront-synthetics.yaml
+  - ingress.yaml

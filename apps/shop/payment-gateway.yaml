@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-gateway
+  labels: {app: payment-gateway, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels: {app: payment-gateway}
+  template:
+    metadata:
+      labels: {app: payment-gateway, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: payment-gateway
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.3
+          ports: [{name: http, containerPort: 8080}]
+          envFrom: [{configMapRef: {name: shop-config}}]
+          env:
+            - {name: ROLE, value: "gateway"}
+            - {name: SERVICE_NAME, value: "payment-gateway"}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+          resources:
+            requests: {cpu: 30m, memory: 80Mi}
+            limits: {cpu: 300m, memory: 192Mi}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-gateway
+  labels: {app: payment-gateway}
+spec:
+  selector: {app: payment-gateway}
+  ports: [{name: http, port: 8080, targetPort: http}]

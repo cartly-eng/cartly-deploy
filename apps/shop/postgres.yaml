@@ -1,0 +1,192 @@
+# Shared Postgres for the shop services. Runs alone on the database node pool (Standard_D2ds_v5)
+# with a 1 vCPU limit.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  01-schema.sql: |
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+    CREATE TABLE products (
+      sku         TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      category    TEXT NOT NULL,
+      price_cents INTEGER NOT NULL,
+      currency    TEXT NOT NULL
+    );
+
+    -- Per-location stock. Written by inventory (reservations) and promotions (flash-sale holds).
+    CREATE TABLE stock_levels (
+      sku         TEXT NOT NULL REFERENCES products(sku),
+      location_id INTEGER NOT NULL,
+      qty         INTEGER NOT NULL,
+      reserved    INTEGER NOT NULL DEFAULT 0,
+      promo_hold  INTEGER NOT NULL DEFAULT 0,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (sku, location_id)
+    );
+
+    CREATE TABLE orders (
+      id          BIGSERIAL PRIMARY KEY,
+      sku         TEXT NOT NULL REFERENCES products(sku),
+      qty         INTEGER NOT NULL,
+      total_cents INTEGER NOT NULL,
+      currency    TEXT NOT NULL,
+      payment_id  TEXT NOT NULL,
+      status      TEXT NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX orders_created_at_idx ON orders (created_at);
+
+    INSERT INTO products (sku, name, category, price_cents, currency)
+    SELECT 'SKU-' || (1000 + n),
+           (ARRAY['Trail','Merino','Espresso','Noise-Cancelling','Cast Iron','Yoga','Mechanical','Linen','Insulated','Ceramic','Bamboo','Wireless'])[1 + n % 12]
+             || ' ' ||
+           (ARRAY['Running Shoes','Socks','Grinder','Earbuds','Skillet','Mat','Keyboard','Shirt','Water Bottle','Mug','Cutting Board','Desk Lamp','Backpack','Jacket','Kettle'])[1 + (n / 12) % 15],
+           (ARRAY['footwear','apparel','kitchen','electronics','fitness','home'])[1 + n % 6],
+           900 + (n * 137) % 24000,
+           (ARRAY['USD','USD','EUR','INR','GBP','EUR','USD'])[1 + n % 7]
+      FROM generate_series(1, 200) AS n;
+
+    INSERT INTO stock_levels (sku, location_id, qty, updated_at)
+    SELECT p.sku, l, 50 + (random() * 450)::int, now() - random() * interval '60 days'
+      FROM products p CROSS JOIN generate_series(1, 2500) AS l;
+    ANALYZE;
+  02-app-role.sh: |
+    #!/bin/sh
+    set -e
+    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d shop <<SQL
+    CREATE ROLE shop LOGIN PASSWORD '${SHOP_DB_PASSWORD}';
+    GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO shop;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shop;
+    GRANT pg_read_all_stats TO shop;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: {app: postgres}
+spec:
+  selector: {app: postgres}
+  ports: [{name: pg, port: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: {app: postgres, app.kubernetes.io/part-of: cartly}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres, app.kubernetes.io/part-of: cartly}
+    spec:
+      nodeSelector: {workload: database}
+      tolerations:
+        - {key: workload, operator: Equal, value: database, effect: NoSchedule}
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          args:
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            - -c
+            - pg_stat_statements.track=all
+            - -c
+            - max_connections=200
+            - -c
+            - shared_buffers=512MB
+            - -c
+            - work_mem=16MB
+          ports: [{name: pg, containerPort: 5432}]
+          env:
+            - {name: POSTGRES_DB, value: shop}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: db-credentials-admin, key: username}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: db-credentials-admin, key: password}}
+            - name: SHOP_DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: db-credentials, key: password}}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
+          readinessProbe:
+            exec: {command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d shop']}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: init, mountPath: /docker-entrypoint-initdb.d}
+      volumes:
+        - name: init
+          configMap: {name: postgres-init}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 16Gi}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-exporter-queries
+data:
+  queries.yaml: |
+    pg_app_sessions:
+      query: |
+        SELECT coalesce(nullif(application_name, ''), 'unknown') AS application_name,
+               coalesce(state, 'unknown') AS state,
+               count(*) AS count,
+               coalesce(max(extract(epoch FROM now() - query_start)) FILTER (WHERE state = 'active'), 0) AS max_active_query_seconds,
+               count(*) FILTER (WHERE wait_event_type = 'Lock') AS waiting_on_lock
+          FROM pg_stat_activity WHERE datname = 'shop' GROUP BY 1, 2
+      metrics:
+        - application_name: {usage: LABEL, description: "Client application_name"}
+        - state: {usage: LABEL, description: "Session state"}
+        - count: {usage: GAUGE, description: "Sessions"}
+        - max_active_query_seconds: {usage: GAUGE, description: "Longest running active query"}
+        - waiting_on_lock: {usage: GAUGE, description: "Sessions waiting on a lock"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  labels: {app: postgres-exporter}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres-exporter}
+  template:
+    metadata:
+      labels: {app: postgres-exporter}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9187"}
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+          args:
+            - --collector.stat_statements
+            - --collector.stat_statements.include_query
+            - --collector.stat_statements.query_length=160
+            - --extend.query-path=/etc/postgres-exporter/queries.yaml
+          env:
+            - name: DATA_SOURCE_USER
+              valueFrom: {secretKeyRef: {name: db-credentials-admin, key: username}}
+            - name: DATA_SOURCE_PASS
+              valueFrom: {secretKeyRef: {name: db-credentials-admin, key: password}}
+            # lock_timeout: one long-held lock must not hang the whole scrape.
+            - {name: DATA_SOURCE_URI, value: "postgres:5432/shop?sslmode=disable&connect_timeout=3&options=-c%20lock_timeout%3D1000"}
+          ports: [{containerPort: 9187}]
+          volumeMounts:
+            - {name: queries, mountPath: /etc/postgres-exporter}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: queries
+          configMap: {name: postgres-exporter-queries}

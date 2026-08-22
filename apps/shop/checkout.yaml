@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels: {app: checkout}
+  template:
+    metadata:
+      labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: checkout
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.3
+          ports: [{name: http, containerPort: 8080}]
+          envFrom: [{configMapRef: {name: shop-config}}]
+          env:
+            - {name: ROLE, value: "checkout"}
+            - {name: SERVICE_NAME, value: "checkout"}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: db-credentials, key: username}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: db-credentials, key: password}}
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  labels: {app: checkout}
+spec:
+  selector: {app: checkout}
+  ports: [{name: http, port: 8080, targetPort: http}]
