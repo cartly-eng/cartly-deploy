@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:prateekkanurkar-cmd/cartly-deploy.git
+    repoURL: git@github.com:cartly-eng/cartly-deploy.git
     targetRevision: main
     path: apps/shop
   destination:

@@ -6,7 +6,7 @@ Kubernetes manifests for Cartly. ArgoCD (`argocd/shop.yaml`) syncs `apps/shop` t
 ## Releasing a service
 
 Bump the image tag (and `app.kubernetes.io/version`) in `apps/shop/<service>.yaml` to a tag built by
-[cartly-shop](https://github.com/prateekkanurkar-cmd/cartly-shop) CI, commit, push. Roll back by
+[cartly-shop](https://github.com/cartly-eng/cartly-shop) CI, commit, push. Roll back by
 reverting the commit.
 
 Secrets (`db-credentials`, `db-credentials-admin`) are provisioned out of band.
