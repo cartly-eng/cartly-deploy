@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: checkout
-  labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
+  labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.5}
 spec:
   replicas: 2
   revisionHistoryLimit: 10
@@ -10,7 +10,7 @@ spec:
     matchLabels: {app: checkout}
   template:
     metadata:
-      labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
+      labels: {app: checkout, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.5}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: checkout
-          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.4
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.5
           ports: [{name: http, containerPort: 8080}]
           envFrom: [{configMapRef: {name: shop-config}}]
           env:
