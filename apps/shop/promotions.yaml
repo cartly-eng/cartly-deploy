@@ -2,15 +2,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: promotions
-  labels: {app: promotions, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+  labels: {app: promotions, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
 spec:
-  replicas: 2
+  replicas: 3
   revisionHistoryLimit: 10
   selector:
     matchLabels: {app: promotions}
   template:
     metadata:
-      labels: {app: promotions, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+      labels: {app: promotions, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -18,13 +18,13 @@ spec:
     spec:
       containers:
         - name: promotions
-          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.3
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.4
           ports: [{name: http, containerPort: 8080}]
           envFrom: [{configMapRef: {name: shop-config}}]
           env:
             - {name: ROLE, value: "promotions"}
             - {name: SERVICE_NAME, value: "promotions"}
-            - {name: DB_POOL_MAX, value: "20"}
+            - {name: DB_POOL_MAX, value: "30"}
             - {name: DB_STATEMENT_TIMEOUT_MS, value: "30000"}
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
@@ -42,7 +42,7 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
-            httpGet: {path: /readyz, port: http}
+            httpGet: {path: /healthz, port: http}
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 2

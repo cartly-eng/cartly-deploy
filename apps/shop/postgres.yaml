@@ -98,7 +98,7 @@ spec:
             - -c
             - pg_stat_statements.track=all
             - -c
-            - max_connections=200
+            - max_connections=100
             - -c
             - shared_buffers=512MB
             - -c

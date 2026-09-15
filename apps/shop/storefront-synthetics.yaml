@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: storefront-synthetics
-  labels: {app: storefront-synthetics, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+  labels: {app: storefront-synthetics, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
 spec:
   replicas: 1
   revisionHistoryLimit: 10
@@ -10,7 +10,7 @@ spec:
     matchLabels: {app: storefront-synthetics}
   template:
     metadata:
-      labels: {app: storefront-synthetics, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.3}
+      labels: {app: storefront-synthetics, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.4}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: storefront-synthetics
-          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.3
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.4
           ports: [{name: http, containerPort: 8080}]
           envFrom: [{configMapRef: {name: shop-config}}]
           env:
