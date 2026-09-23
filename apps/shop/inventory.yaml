@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: inventory
-  labels: {app: inventory, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.5.2}
+  labels: {app: inventory, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.5}
 spec:
   replicas: 2
   revisionHistoryLimit: 10
@@ -10,7 +10,7 @@ spec:
     matchLabels: {app: inventory}
   template:
     metadata:
-      labels: {app: inventory, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.5.2}
+      labels: {app: inventory, app.kubernetes.io/part-of: cartly, app.kubernetes.io/version: v2.4.5}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: inventory
-          image: drdroidtest.azurecr.io/cartly/shop-service:v2.5.2
+          image: drdroidtest.azurecr.io/cartly/shop-service:v2.4.5
           ports: [{name: http, containerPort: 8080}]
           envFrom: [{configMapRef: {name: shop-config}}]
           env:
